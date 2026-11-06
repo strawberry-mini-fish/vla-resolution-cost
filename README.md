@@ -22,6 +22,11 @@ LIBERO-10 在 5 个配置里都卡在 32–34%，同期其他套件在 40k 时�
 
 ## 结果
 
+![训练时间 vs 平均成功率](results/figures/fig1_main.png)
+
+横轴是训练时间，纵轴是平均成功率，误差棒是 95% Wilson 区间（每配置 200 episodes）。20k 的三个点挤在左边，40k 的两个在右边。
+
+
 每配置 200 episodes（4 套件 × 10 任务 × 5 集）。表由 `make_pareto.py` 从 `summary.jsonl` 生成，没有手抄。
 
 | 实验 | 显存(MiB) | 训练(min) | spatial | object | goal | long | 平均 |
