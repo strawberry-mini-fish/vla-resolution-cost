@@ -1,0 +1,126 @@
+# 实验清单
+#
+# 结构：
+#   common       所有实验共享的 lerobot-train 参数（key 直接对应 --key=value）
+#   experiments  每项只写差异，overrides 会覆盖 common 里的同名 key
+#
+# 用法：
+#   python scripts/run_sweep.py --print-cmd --only r256    # 先看命令长什么样
+#   python scripts/run_sweep.py --only r256                # 再真跑
+#
+# 注意：steps 必须对所有对比实验保持一致，否则成功率不可比。
+
+common:
+  # LeRobot 0.6.x：policy 是带类型选择的配置，必须同时给 type 和 pretrained_path
+  policy.type: smolvla
+  policy.pretrained_path: lerobot/smolvla_base
+  policy.push_to_hub: false
+  policy.freeze_vision_encoder: true
+  policy.train_expert_only: true
+  policy.resize_imgs_with_padding: [512, 512]
+  policy.chunk_size: 50
+
+  dataset.repo_id: lerobot/libero
+
+  # batch 16 是探针测出来的（512 分辨率下峰值 4904 MiB）。
+  # 当时留余量是准备做解冻实验，后来没做，这 3 GB 一直空着；batch 24 其实也跑得动（6492 MiB）。
+  # 显存拟合：1846 + 195 × batch_size。所有对比实验得用同一个 batch，不然成功率不可比
+  batch_size: 16
+  steps: 20000
+  # 每 5000 步存一次 checkpoint：CUDA 瞬时故障会导致整轮重跑，
+  # 存得勤一点，失败时最多损失 25% 的时间（每次存盘约 15 秒）
+  save_freq: 5000
+  env_eval_freq: 0
+  num_workers: 2
+  seed: 1000
+
+  accelerator.mixed_precision: bf16
+  accelerator.gradient_accumulation.steps: 1
+
+experiments:
+  # ---------- 基线 ----------
+  - name: base_r512_bf16
+    desc: 基线。512 输入 + bf16 + 默认冻结策略
+    overrides: {}
+
+  # ---------- Q1 主线：分辨率 ----------
+  - name: r384_bf16
+    desc: 输入降到 384
+    overrides:
+      policy.resize_imgs_with_padding: [384, 384]
+
+  - name: r256_bf16
+    desc: 输入降到 256（与 LIBERO 原始观测一致）
+    overrides:
+      policy.resize_imgs_with_padding: [256, 256]
+
+  # ---------- Q2：混合精度 ----------
+  - name: r512_fp32
+    desc: 关掉混合精度，对照 bf16 的收益
+    overrides:
+      accelerator.mixed_precision: "no"
+
+  - name: r256_fp32
+    desc: 256 + fp32，看两者是否可叠加
+    overrides:
+      policy.resize_imgs_with_padding: [256, 256]
+      accelerator.mixed_precision: "no"
+
+  # ---------- Q3：冻结策略 ----------
+  - name: r512_unfreeze_vision
+    desc: 解冻视觉编码器（显存会明显上升，先确认能跑）
+    overrides:
+      policy.freeze_vision_encoder: false
+
+  # ---------- Q4：LoRA ----------
+  - name: r256_lora_r32
+    desc: LoRA r=32，对比全量微调
+    overrides:
+      policy.resize_imgs_with_padding: [256, 256]
+      peft.method_type: LORA
+      peft.r: 32
+      peft.lora_alpha: 32
+      policy.optimizer_lr: 1e-3
+
+  # ---------- batch 与梯度累积 ----------
+  # 注意：batch_size 上限由 scripts/probe_batch.sh 测出来后再填
+  - name: r256_bf16_b16
+    desc: 256 + batch 16（若显存不够会自动 OOM，属预期）
+    overrides:
+      policy.resize_imgs_with_padding: [256, 256]
+      batch_size: 16
+
+  - name: r256_bf16_ga2
+    desc: 256 + batch 8 + 梯度累积 2（等效 batch 16）
+    overrides:
+      policy.resize_imgs_with_padding: [256, 256]
+      accelerator.gradient_accumulation.steps: 2
+
+  # ---------- Q5：加长训练（检验结论是否只在欠训练区间成立）----------
+  # 目的：现在 20k 步只到 44%，质疑者会说"模型没训够，等训好了再看"。
+  # 把 512 和 256 都加到 40k，看差距是否出现。
+  # 注意：save_freq 调到 10000，因为 40k 步太长，崩一次损失太大。
+  - name: r512_40k
+    desc: 512 分辨率 + 40000 步（基线加长一倍）
+    overrides:
+      steps: 40000
+      save_freq: 10000
+      policy.resize_imgs_with_padding: [512, 512]
+
+  - name: r256_40k
+    desc: 256 分辨率 + 40000 步
+    overrides:
+      steps: 40000
+      save_freq: 10000
+      policy.resize_imgs_with_padding: [256, 256]
+
+# =====================================================================
+# 常用改动速查
+#
+# 换 checkpoint 位置：results/runs/<name>/checkpoints/last/pretrained_model
+# 改输出目录：run_sweep.py 自动设为 results/runs/<name>
+# 让某个实验只用 1 个小 suite 快速验证：在 overrides 里加
+#     env.type: libero
+#     env.task: libero_object
+#   （注意这会开启训练中评测，env_eval_freq 需 > 0）
+# =====================================================================

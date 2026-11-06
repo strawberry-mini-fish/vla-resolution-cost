@@ -1,0 +1,25 @@
+# 实验产物（体积大，不入库）
+results/runs/
+results/eval_variants/
+results/eval_logs/
+results/logs/
+*.mp4
+
+# 编辑备份（改文件前留的，一律不入库）
+*.bak*
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# 系统
+.DS_Store
+*.swp
+
+# 必须提交（体积小、且是结果的事实来源）
+# results/summary.jsonl
+# results/mechanism.jsonl
+# results/table.md
+# results/mechanism_report.txt
+# results/figures/*.png

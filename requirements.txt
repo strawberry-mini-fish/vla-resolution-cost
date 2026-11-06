@@ -1,0 +1,8 @@
+# 本仓库自身的依赖（LeRobot / PyTorch 请单独按 README 安装）
+pyyaml>=6.0
+matplotlib>=3.8
+
+# 说明：
+#   - torch 必须用 cu128 或更新的轮子（RTX 50 系 / Blackwell sm_120）
+#   - lerobot 用 pip install -e ".[libero,peft]" 安装
+#   见 scripts/setup_env.sh 的检查项
